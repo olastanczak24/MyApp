@@ -13,7 +13,7 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code to the container
-COPY . /app/
+COPY app.py /app/
 
 # Expose port 5000 for Flask
 EXPOSE 5000
