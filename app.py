@@ -6,7 +6,7 @@ import random
 import json
 import boto3
 import requests
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
 
 # AWS DynamoDB Setup
 aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
@@ -23,28 +23,23 @@ table = dynamodb.Table('AnimalPictures')  # Replace with your table name
 
 app = Flask(__name__)
 
-# Function to fetch pictures
+# Fetch images from a URL
 def fetch_pictures(url, count):
     images = []
     for _ in range(count):
-        # Add a random query parameter to ensure unique fetches
         unique_url = f"{url}?random={random.randint(1, 10000)}"
         try:
-            print(f"Requesting image from URL: {unique_url}")
             response = requests.get(unique_url, timeout=5)
             if response.status_code == 200:
                 images.append(unique_url)
-            else:
-                print(f"Failed to fetch image: {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching image: {e}")
+        except requests.exceptions.RequestException:
+            pass
     return images
 
-# Function to save images to DynamoDB
+# Save images to DynamoDB
 def save_images_to_dynamodb(animal_type, image_urls):
     for image_url in image_urls:
-        timestamp = str(int(time.time() * 1000))  # Current time in milliseconds
-        print(f"Saving image to DynamoDB: {image_url} with timestamp {timestamp}")
+        timestamp = str(int(time.time() * 1000))
         table.put_item(
             Item={
                 'AnimalType': animal_type,
@@ -53,139 +48,89 @@ def save_images_to_dynamodb(animal_type, image_urls):
                 'ImageID': str(uuid.uuid4()),
             }
         )
-    print("All images saved to DynamoDB!")
 
-# Function to get the last saved photo
-def get_last_saved_photo(animal_types):
+# Fetch all image data from DynamoDB
+def fetch_all_images():
     try:
-        latest_photo = None
-        latest_timestamp = None
+        response = table.scan()
+        return response.get('Items', [])
+    except Exception:
+        return []
 
-        for animal_type in animal_types:
-            # Query DynamoDB for the last saved photo of this animal type
-            response = table.query(
-                KeyConditionExpression=boto3.dynamodb.conditions.Key('AnimalType').eq(animal_type),
-                ScanIndexForward=False,  # Get the most recent item
-                Limit=1
-            )
-
-            if response.get('Items'):
-                last_picture = response['Items'][0]
-                raw_timestamp = last_picture.get('Timestamp')  # Safely retrieve the Timestamp field
-
-                if not raw_timestamp:
-                    print(f"Warning: Missing Timestamp for {animal_type}")
-                    continue
-
-                try:
-                    raw_timestamp = int(raw_timestamp)  # Convert to integer
-                except ValueError:
-                    print(f"Warning: Invalid Timestamp format for {animal_type}")
-                    continue
-
-                readable_timestamp = datetime.datetime.fromtimestamp(raw_timestamp / 1000).isoformat()
-
-                # Check if this is the latest across all animal types
-                if latest_timestamp is None or raw_timestamp > latest_timestamp:
-                    latest_photo = {
-                        "AnimalType": animal_type,
-                        "RawTimestamp": raw_timestamp,
-                        "ReadableTimestamp": readable_timestamp,
-                        "ImageURL": last_picture['ImageURL']
-                    }
-                    latest_timestamp = raw_timestamp
-
-        if latest_photo:
-            return latest_photo
-        else:
-            return {"error": "No valid photos found for the given animal types"}
-    except Exception as e:
-        return {"error": str(e)}
-
-# Manage the save order persistently
-def get_save_order():
-    order_file = "/app/save_order.json"
-    if os.path.exists(order_file):
-        with open(order_file, "r") as f:
-            data = json.load(f)
-            return data.get("order", ["dog", "bear"])
-    else:
-        return ["dog", "bear"]
-
-def update_save_order(order):
-    order_file = "/app/save_order.json"
-    new_order = order[::-1]  # Reverse the order for the next run
-    with open(order_file, "w") as f:
-        json.dump({"order": new_order}, f)
-    return new_order
-
+# Home Page: Display total images and types
 @app.route('/')
 def home():
     try:
-        response = table.scan()
-        if 'Items' not in response or len(response['Items']) == 0:
-            return "<h1>No images found in DynamoDB</h1>"
+        images = fetch_all_images()
+        if not images:
+            return "<h1>No images found</h1>"
 
-        latest_item = max(response['Items'], key=lambda x: int(x['Timestamp']))
+        # Calculate stats
+        image_count = len(images)
+        types = {item['AnimalType'] for item in images}
+
+        # Render stats
         return f"""
-        <h1>Latest Image</h1>
-        <p>Timestamp: {latest_item.get('Timestamp')}</p>
-        <img src="{latest_item.get('ImageURL')}" alt="Latest Image" style="max-width: 100%; height: auto;">
+        <h1>Welcome to the Animal Pictures API!</h1>
+        <p>Total Images Fetched: {image_count}</p>
+        <p>Animal Types: {', '.join(types)}</p>
         """
     except Exception as e:
         return f"<h1>Error: {str(e)}</h1>"
 
+# Latest Image Data: Return latest image details as JSON
 @app.route('/latest-photo', methods=['GET'])
 def latest_photo():
     try:
-        # Query DynamoDB for all items
-        response = table.scan()
-        if 'Items' not in response or len(response['Items']) == 0:
-            return jsonify({"error": "No images found in DynamoDB"}), 404
+        images = fetch_all_images()
+        if not images:
+            return jsonify({"error": "No images found"}), 404
 
-        # Find the latest photo by Timestamp
-        latest_item = max(response['Items'], key=lambda x: int(x['Timestamp']))
-
+        # Find the latest image
+        latest_item = max(images, key=lambda x: int(x['Timestamp']))
         return jsonify({
-            "AnimalType": latest_item.get('AnimalType'),
-            "ImageURL": latest_item.get('ImageURL'),
-            "RawTimestamp": latest_item.get('Timestamp'),
+            "AnimalType": latest_item['AnimalType'],
+            "ImageURL": latest_item['ImageURL'],
+            "RawTimestamp": latest_item['Timestamp'],
             "ReadableTimestamp": datetime.datetime.fromtimestamp(
                 int(latest_item['Timestamp']) / 1000
-            ).isoformat()
+            ).isoformat(),
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Latest Image Page: Display the last saved image
+@app.route('/latest-image', methods=['GET'])
+def latest_image():
+    try:
+        images = fetch_all_images()
+        if not images:
+            return "<h1>No images found</h1>"
+
+        # Find the latest image
+        latest_item = max(images, key=lambda x: int(x['Timestamp']))
+        return f"""
+        <h1>Latest Image</h1>
+        <p>Animal Type: {latest_item['AnimalType']}</p>
+        <p>Timestamp: {latest_item['Timestamp']}</p>
+        <img src="{latest_item['ImageURL']}" alt="Latest Image" style="max-width: 100%; height: auto;">
+        """
+    except Exception as e:
+        return f"<h1>Error: {str(e)}</h1>"
 
 if __name__ == '__main__':
     # URLs for animal images
     image_urls = {
         "dog": "https://place.dog/200/300",
         "bear": "https://placebear.com/200/300",
+        "cat": "https://cataas.com/cat"
     }
 
-    # Determine the save order
-    save_order = get_save_order()
-
-    # Fetch and save images based on the current order
-    for animal_type in save_order:
-        print(f"Fetching image for: {animal_type}")
-        fetched_images = fetch_pictures(image_urls[animal_type], 1)
+    # Fetch and save images
+    for animal_type, url in image_urls.items():
+        fetched_images = fetch_pictures(url, 1)
         save_images_to_dynamodb(animal_type, fetched_images)
 
-    # Update the save order for the next restart
-    update_save_order(save_order)
-
-    # Print the last saved photo
-    result = get_last_saved_photo(["dog", "bear"])
-    if "error" not in result:
-        print("Last saved photo details:")
-        print(f"Animal Type: {result['AnimalType']}")
-        print(f"Raw Timestamp: {result['RawTimestamp']}")
-        print(f"Readable Timestamp: {result['ReadableTimestamp']}")
-        print(f"Image URL: {result['ImageURL']}")
-    else:
-        print(result["error"])
-
-    # Start the Flask app
     app.run(host='0.0.0.0', port=5000)
+
+
