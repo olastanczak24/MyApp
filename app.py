@@ -78,45 +78,32 @@ def home():
     except Exception as e:
         return f"<h1>Error: {str(e)}</h1>"
 
-# Latest Image Data: Return latest image details as JSON
 @app.route('/latest-photo', methods=['GET'])
 def latest_photo():
+    """
+    Endpoint to fetch information about the last photo fetched and display the photo itself.
+    """
     try:
+        # Fetch all images from the database
         images = fetch_all_images()
         if not images:
-            return jsonify({"error": "No images found"}), 404
+            return "<h1>No images found</h1>", 404
 
-        # Find the latest image
+        # Find the most recent image based on the timestamp
         latest_item = max(images, key=lambda x: int(x['Timestamp']))
-        return jsonify({
-            "AnimalType": latest_item['AnimalType'],
-            "ImageURL": latest_item['ImageURL'],
-            "RawTimestamp": latest_item['Timestamp'],
-            "ReadableTimestamp": datetime.datetime.fromtimestamp(
-                int(latest_item['Timestamp']) / 1000
-            ).isoformat(),
-        }), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-# Latest Image Page: Display the last saved image
-@app.route('/latest-image', methods=['GET'])
-def latest_image():
-    try:
-        images = fetch_all_images()
-        if not images:
-            return "<h1>No images found</h1>"
-
-        # Find the latest image
-        latest_item = max(images, key=lambda x: int(x['Timestamp']))
+        # Generate the HTML response with metadata and the image
         return f"""
-        <h1>Latest Image</h1>
-        <p>Animal Type: {latest_item['AnimalType']}</p>
-        <p>Timestamp: {latest_item['Timestamp']}</p>
+        <h1>Latest Photo</h1>
+        <p><strong>Animal Type:</strong> {latest_item['AnimalType']}</p>
+        <p><strong>Timestamp:</strong> {latest_item['Timestamp']}</p>
+        <p><strong>Readable Timestamp:</strong> {datetime.datetime.fromtimestamp(int(latest_item['Timestamp']) / 1000).isoformat()}</p>
         <img src="{latest_item['ImageURL']}" alt="Latest Image" style="max-width: 100%; height: auto;">
         """
     except Exception as e:
-        return f"<h1>Error: {str(e)}</h1>"
+        # Handle any unexpected errors
+        return f"<h1>Error: {str(e)}</h1>", 500
+
 
 if __name__ == '__main__':
     # URLs for animal images
