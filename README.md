@@ -1,90 +1,133 @@
-# MyApp
-
-This is an application that fetches images from public APIs, saves them to AWS DynamoDB, and provides a REST API to retrieve the latest saved image. The app also serves a web interface to display the latest image.
-
-## Features
-- Fetches images from a URL (e.g., `https://place.dog/200/300`).
-- Saves the images to a DynamoDB table with a timestamp and unique ID.
-- Provides an API endpoint to retrieve the latest image.
-- Displays the latest image in a web interface.
+###  MyApp
+This is a Python-based web application that interacts with a DynamoDB database to manage and display animal images. This app provides a REST API with two main endpoints:
 
 ---
 
-## Prerequisites
+### Features
+1. **Home Endpoint (`/`)**:
+   - Displays the total number of images saved in the database.
+   - Lists all the unique types of animals for which images have been saved.
 
-Before running this application, ensure you have the following:
-1. **Python 3.9+** installed on your system.
-2. **AWS Account**:
-   - Create a DynamoDB table named `AnimalPictures` with the following schema:
-     - **Partition Key**: `AnimalType` (String)
-     - **Sort Key**: `Timestamp` (String)
-3. **Docker** installed if you plan to run the app in a container.
+2. **Latest Image Endpoint (`/latest-image`)**:
+   - Displays the most recently saved image.
+   - Shows details about the image, including its type and timestamp.
 
 ---
 
-## Setting Up
+### Technologies Used
+- **Flask**: A lightweight Python web framework to create REST APIs.
+- **AWS DynamoDB**: A NoSQL database used to store image metadata.
+- **Docker**: For containerizing the application.
+- **Python Libraries**:
+  - `boto3`: To interact with AWS DynamoDB.
+  - `requests`: To fetch images dynamically from URLs.
+  - `uuid`: To generate unique IDs for each image.
+  - `datetime` and `time`: For timestamping and date handling.
 
-1. Clone the Repository
-Clone the repository to your local machine:
+---
+
+### API Endpoints
+#### 1. **Home (`/`)**
+   - **Method**: `GET`
+   - **Description**: Returns information about the total number of images saved in the database and the unique animal types.
+   - **Response**:
+     ```html
+     <h1>Welcome to the Animal Pictures API!</h1>
+     <p>Total Images Fetched: [number]</p>
+     <p>Animal Types: [list of types]</p>
+     ```
+
+#### 2. **Latest Image (`/latest-image`)**
+   - **Method**: `GET`
+   - **Description**: Displays the most recently saved image along with its type and timestamp.
+   - **Response**:
+     ```html
+     <h1>Latest Image</h1>
+     <p>Animal Type: [type]</p>
+     <p>Timestamp: [timestamp]</p>
+     <img src="[image URL]" alt="Latest Image">
+     ```
+
+---
+
+### How It Works
+1. **Fetching Images**:
+   - Images are fetched dynamically from predefined URLs based on animal types (e.g., dogs, bears, cats).
+   - A unique URL is generated for each image request to ensure variety.
+
+2. **Saving to DynamoDB**:
+   - Each image is saved to DynamoDB with the following attributes:
+     - `AnimalType`: The type of animal (e.g., "dog").
+     - `Timestamp`: The time the image was saved, stored in milliseconds.
+     - `ImageURL`: The URL of the image.
+     - `ImageID`: A unique identifier for the image.
+
+3. **Displaying Data**:
+   - The app reads data from DynamoDB to display the number of saved images, their types, and the latest image.
+
+---
+
+### Running Locally
+
+#### 1. Clone the Repository:
 ```bash
-git clone https://github.com/your-username/MyApp.git
+git clone https://github.com/olastanczak24/MyApp.git
 cd MyApp
-2. Create a .env File
-In the root directory of the project, create a .env file and add your AWS credentials:
+```
 
-AWS_ACCESS_KEY_ID=your-access-key-id
-AWS_SECRET_ACCESS_KEY=your-secret-access-key
-AWS_DEFAULT_REGION=your-region
-Replace your-access-key-id, your-secret-access-key, and your-region with your actual AWS credentials and region.
+#### 2. Set Up Environment Variables:
+- Create a `.env` file or export the following variables in your shell:
+```bash
+export AWS_ACCESS_KEY_ID="your-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-secret-access-key"
+export AWS_DEFAULT_REGION="your-region"
+```
 
-### If you want to run locally
-1. Install Dependencies
-Create a virtual environment and install the required Python packages:
-
-bash
-python3 -m venv venv
-source venv/bin/activate
+#### 3. Install Dependencies:
+```bash
 pip install -r requirements.txt
+```
 
-2. Start the Application
-Run the application:
+#### 4. Run the App:
+```bash
 python app.py
+```
 
-3. Access the Application
-Open your browser and go to http://localhost:5000 to view the latest image.
-Use the API endpoint to retrieve the latest image in JSON format:
-bash
-curl http://localhost:5000/latest-photo
+#### 5. Access the App:
+- Visit `http://127.0.0.1:5000` for the Home page.
+- Visit `http://127.0.0.1:5000/latest-image` for the latest saved image.
 
+---
 
 ### Running with Docker
-1. Build the Docker Image
-Build the Docker image:
 
-bash
-docker build -t flask-dynamodb-app:latest .
+#### 1. Build the Docker Image:
+```bash
+docker build -t myapp .
+```
 
-2. Run the Docker Container
-Start the container with your .env file:
+#### 2. Run the Docker Container:
+```bash
+docker run -d -p 5000:5000 --name flask-app \
+  -e AWS_ACCESS_KEY_ID="your-access-key-id" \
+  -e AWS_SECRET_ACCESS_KEY="your-secret-access-key" \
+  -e AWS_DEFAULT_REGION="your-region" \
+  myapp
+```
 
-bash
-docker run -d -p 5000:5000 \
-  --env-file .env \
-  --name flask-dynamodb-app flask-dynamodb-app:latest
+#### 3. Access the App:
+- Visit `http://127.0.0.1:5000` for the Home page.
+- Visit `http://127.0.0.1:5000/latest-image` for the latest saved image.
 
-3. Access the Application
-Open http://localhost:5000 in your browser.
-Retrieve the latest photo JSON:
-bash
-curl http://localhost:5000/latest-photo
+#### 4. Check Logs:
+```bash
+docker logs flask-app
+```
 
-4. Testing the Application
-Fetch Images
-The app automatically fetches and saves images for the dog and bear animal types to DynamoDB when it starts.
+#### 5. Stop and Remove the Container:
+```bash
+docker stop flask-app
+docker rm flask-app
+```
 
-Verify the DynamoDB Table
-Check your DynamoDB table (AnimalPictures) to ensure the images are saved.
-
-Access the Latest Image
-Open http://localhost:5000 to view the latest image.
-Use curl or Postman to test the /latest-photo API.
+---
