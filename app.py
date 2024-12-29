@@ -2,6 +2,8 @@ import os
 import time
 import uuid
 import datetime
+import random
+import json
 import boto3
 import requests
 from flask import Flask, jsonify
@@ -21,37 +23,39 @@ table = dynamodb.Table('AnimalPictures')  # Replace with your table name
 
 app = Flask(__name__)
 
-# Fetch pictures from a URL
-def fetch_pictures(count):
-    url = "https://place.dog/200/300"
+# Function to fetch pictures
+def fetch_pictures(url, count):
     images = []
     for _ in range(count):
+        # Add a random query parameter to ensure unique fetches
+        unique_url = f"{url}?random={random.randint(1, 10000)}"
         try:
-            print(f"Requesting image from URL: {url}")
-            response = requests.get(url, timeout=5)
+            print(f"Requesting image from URL: {unique_url}")
+            response = requests.get(unique_url, timeout=5)
             if response.status_code == 200:
-                images.append(url)
+                images.append(unique_url)
             else:
                 print(f"Failed to fetch image: {response.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"Error fetching image: {e}")
     return images
 
-# Save images to DynamoDB
+# Function to save images to DynamoDB
 def save_images_to_dynamodb(animal_type, image_urls):
     for image_url in image_urls:
-        print(f"Saving image to DynamoDB: {image_url}")
+        timestamp = str(int(time.time() * 1000))  # Current time in milliseconds
+        print(f"Saving image to DynamoDB: {image_url} with timestamp {timestamp}")
         table.put_item(
             Item={
                 'AnimalType': animal_type,
-                'Timestamp': str(int(time.time() * 1000)),
+                'Timestamp': timestamp,
                 'ImageURL': image_url,
                 'ImageID': str(uuid.uuid4()),
             }
         )
     print("All images saved to DynamoDB!")
 
-# Get the last saved photo for specified animal types
+# Function to get the last saved photo
 def get_last_saved_photo(animal_types):
     try:
         latest_photo = None
@@ -98,6 +102,23 @@ def get_last_saved_photo(animal_types):
     except Exception as e:
         return {"error": str(e)}
 
+# Manage the save order persistently
+def get_save_order():
+    order_file = "/app/save_order.json"
+    if os.path.exists(order_file):
+        with open(order_file, "r") as f:
+            data = json.load(f)
+            return data.get("order", ["dog", "bear"])
+    else:
+        return ["dog", "bear"]
+
+def update_save_order(order):
+    order_file = "/app/save_order.json"
+    new_order = order[::-1]  # Reverse the order for the next run
+    with open(order_file, "w") as f:
+        json.dump({"order": new_order}, f)
+    return new_order
+
 @app.route('/')
 def home():
     try:
@@ -137,14 +158,26 @@ def latest_photo():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Test saving and fetching
-    animal_types = ["dog", "bear"]
-    image_urls = fetch_pictures(1)
-    save_images_to_dynamodb("dog", image_urls)
-    save_images_to_dynamodb("bear", ["https://placebear.com/g/200/300"])
+    # URLs for animal images
+    image_urls = {
+        "dog": "https://place.dog/200/300",
+        "bear": "https://placebear.com/200/300",
+    }
+
+    # Determine the save order
+    save_order = get_save_order()
+
+    # Fetch and save images based on the current order
+    for animal_type in save_order:
+        print(f"Fetching image for: {animal_type}")
+        fetched_images = fetch_pictures(image_urls[animal_type], 1)
+        save_images_to_dynamodb(animal_type, fetched_images)
+
+    # Update the save order for the next restart
+    update_save_order(save_order)
 
     # Print the last saved photo
-    result = get_last_saved_photo(animal_types)
+    result = get_last_saved_photo(["dog", "bear"])
     if "error" not in result:
         print("Last saved photo details:")
         print(f"Animal Type: {result['AnimalType']}")
@@ -156,4 +189,7 @@ if __name__ == '__main__':
 
     # Start the Flask app
     app.run(host='0.0.0.0', port=5000)
+
+
+
 
