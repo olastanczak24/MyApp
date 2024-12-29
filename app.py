@@ -23,7 +23,7 @@ app = Flask(__name__)
 
 # Fetch pictures from a URL
 def fetch_pictures(count):
-    url = "https://place.dog/200/300"
+    urls = ["https://place.dog/200/300", "https://place.dog/300/200"]
     images = []
     for _ in range(count):
         try:
@@ -140,7 +140,7 @@ if __name__ == '__main__':
     # Test saving and fetching
     animal_types = ["dog", "bear"]
     image_urls = fetch_pictures(1)
-    save_images_to_dynamodb("dog", image_urls)
+    save_images_to_dynamodb("dog", [https://place.dog/300/200])
     save_images_to_dynamodb("bear", ["https://placebear.com/g/200/300"])
 
     # Print the last saved photo
